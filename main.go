@@ -9,25 +9,20 @@ import (
 	"github.com/gofiber/fiber/v2"
 	"github.com/gofiber/fiber/v2/middleware/earlydata"
 	"github.com/gofiber/fiber/v2/middleware/recover"
-	jsoniter "github.com/json-iterator/go"
+	"github.com/pccre/utils/Mut"
+	"github.com/pccre/utils/c"
 )
 
 var wsConfig = websocket.Config{EnableCompression: true}
-var json = jsoniter.ConfigFastest
+var json = c.JSON
 
 var methodsList string
-var pool = MutMap{Mut: &sync.RWMutex{}, Map: map[string]*MutWS{}}
-var subscribed = MutArray{Mut: &sync.RWMutex{}}
+var pool = Mut.Map[string, *Mut.WS]{Mut: &sync.RWMutex{}, Map: map[string]*Mut.WS{}}
+var subscribed = Mut.Array[*Mut.WS]{Mut: &sync.RWMutex{}}
 
-type MethodHandler func(c *MutWS, content interface{})
+type MethodHandler func(c *Mut.WS, content interface{})
 
-// fast, doesn't keep order
-func remove[T any](s []T, i int) []T {
-	s[i] = s[len(s)-1]
-	return s[:len(s)-1]
-}
-
-func unsubscribe(c *MutWS) bool {
+func unsubscribe(c *Mut.WS) bool {
 	for i, conn := range subscribed.Array {
 		if conn == c {
 			subscribed.Remove(i)
@@ -37,7 +32,7 @@ func unsubscribe(c *MutWS) bool {
 	return false
 }
 
-func disconnect(c *MutWS, isKicked bool) {
+func disconnect(c *Mut.WS, isKicked bool) {
 	if isKicked {
 		c.WriteJSON(Response{Method: "StartSession", Content: "session_busy"})
 		c.Close()
@@ -46,7 +41,7 @@ func disconnect(c *MutWS, isKicked bool) {
 	removeFromPool(c)
 }
 
-func removeFromPool(c *MutWS) bool {
+func removeFromPool(c *Mut.WS) bool {
 	for i, conn := range pool.Map {
 		if conn == c {
 			pool.Remove(i)
@@ -72,7 +67,7 @@ func makeSessionCount() Response {
 }
 
 var methods = map[string]MethodHandler{
-	"startsession": func(c *MutWS, content interface{}) {
+	"startsession": func(c *Mut.WS, content interface{}) {
 		msg, ok := content.(string)
 		if !ok {
 			c.WriteJSON(Response{Method: "StartSession", Content: "[ERROR] You need to provide a string as the argument!"})
@@ -90,11 +85,11 @@ var methods = map[string]MethodHandler{
 			}
 		} else {
 			pool.Set(msg, c)
-      BroadcastJSON(makeSessionCount())
+			BroadcastJSON(makeSessionCount())
 		}
 		c.WriteJSON(Response{Method: "StartSession", Content: "session_started"})
 	},
-	"subscribe": func(c *MutWS, _ interface{}) {
+	"subscribe": func(c *Mut.WS, _ interface{}) {
 		subscribed.Mut.RLock()
 		for _, conn := range subscribed.Array {
 			if c == conn {
@@ -107,7 +102,7 @@ var methods = map[string]MethodHandler{
 		subscribed.Append(c)
 		c.WriteJSON(makeSessionCount())
 	},
-	"unsubscribe": func(c *MutWS, _ interface{}) {
+	"unsubscribe": func(c *Mut.WS, _ interface{}) {
 		if !unsubscribe(c) {
 			c.WriteJSON(Response{Method: "Unsubscribe", Content: "[ERROR] You are not subscribed to updates!"})
 		}
@@ -138,7 +133,7 @@ func main() {
 	})
 
 	http.Get("/SessionManager", websocket.New(func(cn *websocket.Conn) {
-		c := &MutWS{WS: cn, Mut: &sync.Mutex{}, Closer: make(chan int)}
+		c := &Mut.WS{WS: cn, Mut: &sync.Mutex{}, Closer: make(chan int)}
 		var (
 			msg    []byte
 			parsed map[string]interface{}
@@ -152,7 +147,7 @@ func main() {
 				if _, msg, err = c.WS.ReadMessage(); err != nil {
 					log.Println("read err:", err)
 					disconnect(c, false)
-          BroadcastJSON(makeSessionCount())
+					BroadcastJSON(makeSessionCount())
 					return
 				}
 
