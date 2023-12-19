@@ -13,7 +13,6 @@ import (
 	"github.com/pccre/utils/c"
 )
 
-var wsConfig = websocket.Config{EnableCompression: true}
 var json = c.JSON
 
 var methodsList string
@@ -183,7 +182,7 @@ func main() {
 		if <-c.Closer == 1 { // https://github.com/gofiber/contrib/issues/698
 			return
 		}
-	}, wsConfig))
+	}, c.WSConfig))
 
 	log.Fatal(http.Listen(":8082"))
 }
